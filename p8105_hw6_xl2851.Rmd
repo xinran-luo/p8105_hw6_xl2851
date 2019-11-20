@@ -1,0 +1,146 @@
+---
+title: "p8105_hw6_xl2851"
+author: "xinran"
+date: "11/15/2019"
+output: github_document
+---
+```{r}
+library(tidyverse)
+library(modelr)
+```
+
+```{r}
+bw_data= read_csv('./data/birthweight.csv')
+```
+
+clean the data
+
+```{r}
+bw_tidy=
+bw_data%>%
+  mutate(
+  babysex=as.factor(babysex),
+  babysex=recode(babysex,"1"="male", "2"="female"),
+  frace=as.factor(frace),
+  frace=recode(frace,"1"="white", "2"="black","3"="asian", "4"="puerto rican", "8"="other","9"="unknown"),
+  malform=as.factor(malform),
+  malform=recode(malform,"1"="present", "0"="absent"),
+  mrace=as.factor(mrace),
+  mrace=recode(mrace, "1"="white", "2"="black","3"="asian", "4"="puerto rican", "8"="other"))
+```
+
+```{r}
+anyNA(bw_tidy)
+```
+The result is FALSE. There is no missing value.
+```{r}
+# fit a regression using all predictors and do elimataion with alpha = 0.05
+all_x = lm(bwt ~ ., data = bw_tidy)
+summary(all_x)
+# take out 3 predictors because of singularities
+step1 = update(all_x, . ~ . -pnumlbw -pnumsga -wtgain)
+summary(step1)
+# take out frace since frace factor 8 has the highest p-value(0.953745)
+step2 = update(step1, . ~ . -frace)
+summary(step2)
+# take out malform since malformpresent has the highest p-value(0.888937)
+step3 = update(step2, . ~ . -malform)
+summary(step3)
+# take out ppbmi since it has the highest p-value(0.759922)
+step4 = update(step3, . ~ . -ppbmi)
+summary(step4)
+# take out momage since it has the highest p-value(0.530319)
+step5 = update(step4, . ~ . -momage)
+summary(step5)
+# take out menarche since it has the highest p-value(0.245327)
+step6 = update(step5, . ~ . -menarche)
+summary(step6)
+# take out fincome
+step7 = update(step6, . ~ . -fincome)
+summary(step7)
+# take out mrace since one of the races(asian) has p-value>0.05
+step8 = update(step7, . ~ . -mrace)
+summary(step8)
+## Since adjusted R-square got much lower, we need to include mrace
+```
+
+```{r}
+my_model = lm(bwt ~ babysex + bhead + blength + delwt + gaweeks + mheight + parity + ppwt + smoken + mrace, data = bw_tidy)
+
+my_model %>% 
+  broom::tidy() %>% 
+  knitr::kable()
+
+my_model %>% 
+  broom::glance()
+```
+
+how to visualize with 2 predictors in a plot?
+it should be linear regression?
+how to pick predictors? randomly?
+plot of model residuals against fitted values(means predicted values?):
+what can this plot tell me?
+```{r}
+bw_tidy %>% 
+modelr::add_residuals(my_model) %>% 
+modelr::add_predictions(my_model) %>% 
+  ggplot(aes(x = pred, y = resid)) + 
+  geom_point()+
+  geom_hline(yintercept = 0, color = "red") +
+  labs(
+    title = 'Model residuals against fitted values',
+    x = 'Fitted values',
+    y = 'Residuals'
+  )
+```
+
+
+model 1:
+
+```{r}
+model_1 = lm(bwt ~ blength + gaweeks, data = bw_tidy)
+model_1 %>% 
+  broom::tidy()
+```
+
+model 2:
+
+```{r}
+model_2= lm(bwt ~ babysex+bhead+blength+babysex*bhead*blength, data = bw_tidy)
+model_2 %>% 
+  broom::tidy()
+```
+
+cross validation
+```{r}
+cv_df = 
+  crossv_mc(bw_tidy, 100)%>% 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble))
+```
+
+```{r}
+cv_df = 
+  cv_df %>% 
+  mutate(my_model = map(train, ~lm(bwt ~ babysex + bhead + blength + delwt + gaweeks + mheight + parity + ppwt + smoken + mrace, data = .x)),
+         model_1= map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
+         model_2= map(train, ~lm(bwt ~ babysex+bhead+blength+babysex*bhead*blength, data=.x))) %>% 
+  mutate(rmse_my_model = map2_dbl(my_model, test, ~rmse(model = .x, data = .y)),
+         rmse_model1= map2_dbl(model_1, test, ~rmse(model = .x, data = .y)),
+         rmse_model2 = map2_dbl(model_2, test, ~rmse(model = .x, data = .y)))
+```
+warning?prediction from a rank-deficient fit may be misleading
+
+```{r}
+cv_df %>% 
+  select(starts_with("rmse")) %>% 
+pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = model, y = rmse)) + geom_violin()
+```
+
