@@ -8,6 +8,7 @@ output: github_document
 library(tidyverse)
 library(modelr)
 ```
+# question 1
 
 ```{r}
 bw_data= read_csv('./data/birthweight.csv')
@@ -143,4 +144,112 @@ pivot_longer(
   mutate(model = fct_inorder(model)) %>% 
   ggplot(aes(x = model, y = rmse)) + geom_violin()
 ```
+
+# quesion 2
+
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+
+fit a simple linear regression
+
+```{r}
+weather_df %>% 
+  lm(tmax ~ tmin, data = .) %>% 
+  broom::tidy()
+```
+
+
+write a function to draw a bootstrap sample based on a dataframe.
+
+```{r}
+boot_sample = function(df) {
+  sample_frac(df, size = 1, replace = TRUE)
+}
+```
+
+```{r}
+boot_sample(df = weather_df) %>% 
+  ggplot(aes(x = tmin, y = tmax)) + 
+  geom_point(alpha = .5)
+```
+
+using modelr
+
+```{r}
+bootstrap_weather=
+weather_df %>% 
+  modelr::bootstrap(n = 5000) %>% 
+  mutate(
+    models = map(strap, ~lm(tmax ~ tmin, data = .x) ),
+    results = map(models, broom::tidy),
+    glance = map(models, broom::glance)) %>% 
+  select(-strap, -models) %>% 
+  unnest(results,glance)
+```
+
+r_square
+
+```{r}
+weather_r2 = 
+  bootstrap_weather %>% 
+  select(.id, r.squared)
+
+quantile(weather_r2$r.squared, 0.025)
+quantile(weather_r2$r.squared, 0.975)
+```
+The 95% confidence interval for R-squared is (0.89, 0.93);
+
+```{r}
+weather_logbetas = 
+  bootstrap_weather %>% 
+  group_by(.id) %>% 
+  summarize(
+    boot_logbetas = log(estimate[[1]]*estimate[[2]])
+  )
+```
+
+Plot the distribution of your estimates, and describe these in words.
+
+```{r}
+weather_r2=
+weather_df %>% 
+  modelr::bootstrap(n = 5000) %>% 
+  mutate(
+    models = map(strap, ~lm(tmax ~ tmin, data = .x) ),
+    results = map(models, broom::glance))%>% 
+  select(-strap, -models) %>% 
+  unnest(results)
+```
+
+```{r}
+weather_r2%>%
+  select(r.squared)%>%
+  mutate(sd_r2=sd(r.squared),
+         mean_r2=mean(r.squared),
+         r_low=mean_r2 - qnorm(1-0.05/2)*sd_r2,
+         r_high=mean_r2 + qnorm(1-0.05/2)*sd_r2,
+         q_2.5=quantile(r.squared,c(.025)),
+         q_97.5=quantile(r.squared,c(.975)))%>%
+  select(-r.squared)%>%
+  head(1)
+  
+```
+
+```{r}
+weather_df %>% 
+  lm(tmax ~ tmin, data = .) %>% 
+  broom::tidy()
+```
+
 
