@@ -217,39 +217,31 @@ weather_logbetas =
   summarize(
     boot_logbetas = log(estimate[[1]]*estimate[[2]])
   )
+
+
+quantile(weather_logbetas$boot_logbetas, 0.025)
+quantile(weather_logbetas$boot_logbetas, 0.975)
 ```
+The 95% confidence interval for log(beta0*beta1) is (1.97, 2.06);
+
 
 Plot the distribution of your estimates, and describe these in words.
-
+The distributions of r-squared and logbetas are approximately normal.
 ```{r}
-weather_r2=
-weather_df %>% 
-  modelr::bootstrap(n = 5000) %>% 
-  mutate(
-    models = map(strap, ~lm(tmax ~ tmin, data = .x) ),
-    results = map(models, broom::glance))%>% 
-  select(-strap, -models) %>% 
-  unnest(results)
+weather_r2 %>% 
+  ggplot(aes(x = r.squared)) +
+  geom_density()+
+  ggtitle("Distribution of R-squared")
 ```
 
 ```{r}
-weather_r2%>%
-  select(r.squared)%>%
-  mutate(sd_r2=sd(r.squared),
-         mean_r2=mean(r.squared),
-         r_low=mean_r2 - qnorm(1-0.05/2)*sd_r2,
-         r_high=mean_r2 + qnorm(1-0.05/2)*sd_r2,
-         q_2.5=quantile(r.squared,c(.025)),
-         q_97.5=quantile(r.squared,c(.975)))%>%
-  select(-r.squared)%>%
-  head(1)
-  
+weather_logbetas %>% 
+  ggplot(aes(x = boot_logbetas)) +
+  geom_density()+
+  ggtitle("Distribution of log(beta0*beta1)")
 ```
 
-```{r}
-weather_df %>% 
-  lm(tmax ~ tmin, data = .) %>% 
-  broom::tidy()
-```
+
+
 
 
