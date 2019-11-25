@@ -10,11 +10,11 @@ library(modelr)
 ```
 # question 1
 
-```{r}
+```{r,message=FALSE}
 bw_data= read_csv('./data/birthweight.csv')
 ```
 
-clean the data
+## clean the data
 
 ```{r}
 bw_tidy=
@@ -33,8 +33,11 @@ bw_data%>%
 ```{r}
 anyNA(bw_tidy)
 ```
-The result is FALSE. There is no missing value.
-```{r}
+The result is FALSE, meaning there is no missing value.
+
+Backward Elimination is used by starting with all variables in the model and eliminate the variable with the highest p-value > 0.05.The modeling process is described below step by step.
+
+```{r,message=FALSE}
 # fit a regression using all predictors and do elimataion with alpha = 0.05
 all_x = lm(bwt ~ ., data = bw_tidy)
 summary(all_x)
@@ -76,11 +79,7 @@ my_model %>%
   broom::glance()
 ```
 
-how to visualize with 2 predictors in a plot?
-it should be linear regression?
-how to pick predictors? randomly?
-plot of model residuals against fitted values(means predicted values?):
-what can this plot tell me?
+
 ```{r}
 bw_tidy %>% 
 modelr::add_residuals(my_model) %>% 
@@ -95,24 +94,23 @@ modelr::add_predictions(my_model) %>%
   )
 ```
 
+As we see in the plot, there are some outliers of both residuals and predicted values. Data points are generally symmetrically distributed around the 0 line.
 
-model 1:
+## model 1:
 
 ```{r}
-model_1 = lm(bwt ~ blength + gaweeks, data = bw_tidy)
-model_1 %>% 
+model1 = lm(bwt ~ blength + gaweeks, data = bw_tidy)%>% 
   broom::tidy()
 ```
 
-model 2:
+## model 2:
 
 ```{r}
-model_2= lm(bwt ~ babysex+bhead+blength+babysex*bhead*blength, data = bw_tidy)
-model_2 %>% 
+model2= lm(bwt ~ babysex*bhead*blength, data = bw_tidy)%>% 
   broom::tidy()
 ```
 
-cross validation
+## cross validation
 ```{r}
 cv_df = 
   crossv_mc(bw_tidy, 100)%>% 
@@ -125,13 +123,12 @@ cv_df =
 cv_df = 
   cv_df %>% 
   mutate(my_model = map(train, ~lm(bwt ~ babysex + bhead + blength + delwt + gaweeks + mheight + parity + ppwt + smoken + mrace, data = .x)),
-         model_1= map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
-         model_2= map(train, ~lm(bwt ~ babysex+bhead+blength+babysex*bhead*blength, data=.x))) %>% 
+         model1= map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
+         model2= map(train, ~lm(bwt ~ babysex*bhead*blength, data=.x))) %>% 
   mutate(rmse_my_model = map2_dbl(my_model, test, ~rmse(model = .x, data = .y)),
-         rmse_model1= map2_dbl(model_1, test, ~rmse(model = .x, data = .y)),
-         rmse_model2 = map2_dbl(model_2, test, ~rmse(model = .x, data = .y)))
+         rmse_model1= map2_dbl(model1, test, ~rmse(model = .x, data = .y)),
+         rmse_model2 = map2_dbl(model2, test, ~rmse(model = .x, data = .y)))
 ```
-warning?prediction from a rank-deficient fit may be misleading
 
 ```{r}
 cv_df %>% 
@@ -142,12 +139,15 @@ pivot_longer(
     values_to = "rmse",
     names_prefix = "rmse_") %>% 
   mutate(model = fct_inorder(model)) %>% 
-  ggplot(aes(x = model, y = rmse)) + geom_violin()
+  ggplot(aes(x = model, y = rmse)) + geom_violin()+
+  ggtitle("Distribution of RMSE values for each model")
 ```
+
+My_model has the smallest rmse while model 1 has the largest rmse. My_model containing babysex,bhead,blength,delwt,gaweeks,mheight,parity,ppwt,smoken and mrace as predictors would be preferable to predict baby's birth weight. 
 
 # quesion 2
 
-```{r}
+```{r,message=FALSE}
 weather_df = 
   rnoaa::meteo_pull_monitors(
     c("USW00094728"),
@@ -169,7 +169,6 @@ weather_df %>%
   broom::tidy()
 ```
 
-
 write a function to draw a bootstrap sample based on a dataframe.
 
 ```{r}
@@ -178,15 +177,9 @@ boot_sample = function(df) {
 }
 ```
 
-```{r}
-boot_sample(df = weather_df) %>% 
-  ggplot(aes(x = tmin, y = tmax)) + 
-  geom_point(alpha = .5)
-```
-
 using modelr
 
-```{r}
+```{r,message=FALSE}
 bootstrap_weather=
 weather_df %>% 
   modelr::bootstrap(n = 5000) %>% 
@@ -200,7 +193,7 @@ weather_df %>%
 
 r_square
 
-```{r}
+```{r,message=FALSE}
 weather_r2 = 
   bootstrap_weather %>% 
   select(.id, r.squared)
@@ -225,7 +218,6 @@ quantile(weather_logbetas$boot_logbetas, 0.975)
 The 95% confidence interval for log(beta0*beta1) is (1.97, 2.06);
 
 
-Plot the distribution of your estimates, and describe these in words.
 The distributions of r-squared and logbetas are approximately normal.
 ```{r}
 weather_r2 %>% 
